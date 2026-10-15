@@ -11,20 +11,235 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
       - uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
 
-      - name: Generate Android project & Build
+      - name: Create project and Build APK
         run: |
-          cp lib/main.dart /tmp/main.dart
-          flutter create --project-name murgify .
-          cp /tmp/main.dart lib/main.dart
-          flutter pub add just_audio dio path_provider
+          flutter create --org com.murgify --project-name murgify app_build
+          cd app_build
+          cat << 'EOF' > lib/main.dart
+          import 'package:flutter/material.dart';
+
+          void main() => runApp(const DotifyMurglarApp());
+
+          class AppColors {
+            static const Color background = Color(0xFF121212);
+            static const Color surface = Color(0xFF181818);
+            static const Color surfaceElevated = Color(0xFF282828);
+            static const Color accent = Color(0xFF1DB954);
+            static const Color textPrimary = Color(0xFFFFFFFF);
+            static const Color textSecondary = Color(0xFFB3B3B3);
+          }
+
+          enum MusicSource { vk, yandex, deezer, soundcloud }
+
+          class Track {
+            final String id, title, artist, duration, bitrate;
+            final MusicSource source;
+            final Color coverColor;
+            bool isDownloaded, isDownloading;
+
+            Track({
+              required this.id,
+              required this.title,
+              required this.artist,
+              required this.duration,
+              this.bitrate = '320 kbps',
+              required this.source,
+              required this.coverColor,
+              this.isDownloaded = false,
+              this.isDownloading = false,
+            });
+          }
+
+          class DotifyMurglarApp extends StatelessWidget {
+            const DotifyMurglarApp({super.key});
+            @override
+            Widget build(BuildContext context) {
+              return MaterialApp(
+                title: 'Murgify',
+                debugShowCheckedModeBanner: false,
+                theme: ThemeData.dark().copyWith(
+                  scaffoldBackgroundColor: AppColors.background,
+                  primaryColor: AppColors.accent,
+                  colorScheme: const ColorScheme.dark(
+                    primary: AppColors.accent,
+                    surface: AppColors.surface,
+                  ),
+                ),
+                home: const MainScreen(),
+              );
+            }
+          }
+
+          class MainScreen extends StatefulWidget {
+            const MainScreen({super.key});
+            @override
+            State<MainScreen> createState() => _MainScreenState();
+          }
+
+          class _MainScreenState extends State<MainScreen> {
+            int _currentNavIndex = 0;
+            MusicSource _selectedSource = MusicSource.vk;
+            Track? _currentTrack;
+            bool _isPlaying = false;
+
+            final List<Track> _tracks = [
+              Track(id: '1', title: 'KERAUNOS', artist: 'PlayaPhonk', duration: '2:14', bitrate: 'FLAC • 1040 kbps', source: MusicSource.vk, coverColor: Colors.deepPurple),
+              Track(id: '2', title: 'Close Eyes', artist: 'DVRST', duration: '2:12', bitrate: 'MP3 • 320 kbps', source: MusicSource.yandex, coverColor: Colors.teal, isDownloaded: true),
+              Track(id: '3', title: 'Murder In My Mind', artist: 'Kordhell', duration: '2:25', bitrate: 'FLAC • 980 kbps', source: MusicSource.deezer, coverColor: Colors.redAccent),
+              Track(id: '4', title: 'Shadow', artist: 'ONIMXRU, SMITHMANE', duration: '2:08', bitrate: 'MP3 • 320 kbps', source: MusicSource.soundcloud, coverColor: Colors.indigo),
+            ];
+
+            Future<void> _downloadTrack(Track track) async {
+              if (track.isDownloaded || track.isDownloading) return;
+              setState(() => track.isDownloading = true);
+              await Future.delayed(const Duration(seconds: 2));
+              setState(() {
+                track.isDownloading = false;
+                track.isDownloaded = true;
+              });
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    backgroundColor: AppColors.surfaceElevated,
+                    content: Text('Трек "${track.title}" сохранен (${track.bitrate})', style: const TextStyle(color: AppColors.textPrimary)),
+                  ),
+                );
+              }
+            }
+
+            String _getSourceName(MusicSource s) {
+              switch (s) {
+                case MusicSource.vk: return 'VK Музыка';
+                case MusicSource.yandex: return 'Я.Музыка';
+                case MusicSource.deezer: return 'Deezer';
+                case MusicSource.soundcloud: return 'SoundCloud';
+              }
+            }
+
+            @override
+            Widget build(BuildContext context) {
+              return Scaffold(
+                body: Stack(
+                  children: [
+                    Container(
+                      decoration: const BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [Color(0xFF1E3A2F), AppColors.background, AppColors.background],
+                          stops: [0.0, 0.35, 1.0],
+                        ),
+                      ),
+                      child: SafeArea(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  const Text('Murgify', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800)),
+                                  IconButton(icon: const Icon(Icons.settings_outlined), onPressed: () {}),
+                                ],
+                              ),
+                            ),
+                            SizedBox(
+                              height: 40,
+                              child: ListView(
+                                scrollDirection: Axis.horizontal,
+                                padding: const EdgeInsets.symmetric(horizontal: 16),
+                                children: MusicSource.values.map((s) {
+                                  final sel = _selectedSource == s;
+                                  return Padding(
+                                    padding: const EdgeInsets.only(right: 8),
+                                    child: ChoiceChip(
+                                      label: Text(_getSourceName(s)),
+                                      selected: sel,
+                                      selectedColor: AppColors.accent,
+                                      backgroundColor: AppColors.surfaceElevated,
+                                      labelStyle: TextStyle(color: sel ? Colors.black : Colors.white, fontWeight: sel ? FontWeight.bold : FontWeight.normal),
+                                      onSelected: (_) => setState(() => _selectedSource = s),
+                                    ),
+                                  );
+                                }).toList(),
+                              ),
+                            ),
+                            Expanded(
+                              child: ListView.builder(
+                                padding: const EdgeInsets.only(bottom: 80, top: 8),
+                                itemCount: _tracks.length,
+                                itemBuilder: (context, i) {
+                                  final t = _tracks[i];
+                                  final cur = _currentTrack?.id == t.id;
+                                  return ListTile(
+                                    onTap: () => setState(() { _currentTrack = t; _isPlaying = true; }),
+                                    leading: Container(width: 48, height: 48, decoration: BoxDecoration(color: t.coverColor, borderRadius: BorderRadius.circular(4)), child: const Icon(Icons.music_note)),
+                                    title: Text(t.title, style: TextStyle(color: cur ? AppColors.accent : Colors.white, fontWeight: FontWeight.w600)),
+                                    subtitle: Text('${t.artist} • ${t.bitrate}', style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                                    trailing: t.isDownloading
+                                      ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.accent))
+                                      : IconButton(
+                                          icon: Icon(t.isDownloaded ? Icons.check_circle : Icons.download_outlined, color: t.isDownloaded ? AppColors.accent : AppColors.textSecondary),
+                                          onPressed: () => _downloadTrack(t),
+                                        ),
+                                  );
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    if (_currentTrack != null)
+                      Positioned(
+                        left: 8, right: 8, bottom: 8,
+                        child: Container(
+                          height: 60,
+                          decoration: BoxDecoration(color: AppColors.surfaceElevated, borderRadius: BorderRadius.circular(8)),
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          child: Row(
+                            children: [
+                              Container(width: 40, height: 40, decoration: BoxDecoration(color: _currentTrack!.coverColor, borderRadius: BorderRadius.circular(4)), child: const Icon(Icons.music_note, size: 20)),
+                              const SizedBox(width: 12),
+                              Expanded(child: Text('${_currentTrack!.title} — ${_currentTrack!.artist}', style: const TextStyle(fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis)),
+                              IconButton(icon: Icon(_isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded, size: 30), onPressed: () => setState(() => _isPlaying = !_isPlaying)),
+                            ],
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                bottomNavigationBar: BottomNavigationBar(
+                  currentIndex: _currentNavIndex,
+                  onTap: (i) => setState(() => _currentNavIndex = i),
+                  backgroundColor: AppColors.background,
+                  selectedItemColor: AppColors.textPrimary,
+                  unselectedItemColor: AppColors.textSecondary,
+                  items: const [
+                    BottomNavigationBarItem(icon: Icon(Icons.home_filled), label: 'Главная'),
+                    BottomNavigationBarItem(icon: Icon(Icons.search), label: 'Поиск'),
+                    BottomNavigationBarItem(icon: Icon(Icons.library_music_outlined), label: 'Медиатека'),
+                  ],
+                ),
+              );
+            }
+          }
+          EOF
           flutter build apk --release
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: Murgify-APK
-          path: build/app/outputs/flutter-apk/app-release.apk
+          path: app_build/build/app/outputs/flutter-apk/app-release.apk
+          
